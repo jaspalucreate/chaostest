@@ -3,6 +3,7 @@ var express = require('express');
 var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
+const rollbar = require('rollbar');
 
 var indexRouter = require('./routes/index');
 var usersRouter = require('./routes/users');
@@ -27,15 +28,29 @@ app.use(function(req, res, next) {
   next(createError(404));
 });
 
+global.environmentServer = {
+	Production: 'Production',
+	Development: 'Development',
+	Staging: 'Staging'
+};
+
 // error handler
+rollbar.init(process.env.ROLLBAR_ACCESS_TOKEN, { environment: process.env.ENVIRONMENT });
 app.use(function(err, req, res, next) {
   // set locals, only providing error in development
   res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
   res.status(err.status || 500);
-  res.render('error');
+  if (err.status == 500 && !req.xhr) {
+      if (process.env.ENVIRONMENT != environmentServer.Development)
+          rollbar.handleError(err, req);
+      res.render('500', { layout: null });
+  }
+  else {
+      if (process.env.ENVIRONMENT != environmentServer.Development)
+          rollbar.handleError(err, req);
+      if (req.xhr)
+          res.status( err.http_code || 500).send('error')
+  }
 });
 
 module.exports = app;
